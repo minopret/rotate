@@ -17,16 +17,14 @@ class Vector(tuple):
         return self.__class__(*(ours * -1 for ours in self))
     def __pow__(self, exp):
         if exp == 2:
+            # The likely case.
             return self * self
-        # These other cases are conventional, but not expected to see use.
-        if exp < 0:
-            raise ValueError
-        if exp == 0:
-            return 1
-        if exp == 1:
-            return self
-        even_exp = (exp - 1) / 2 if exp % 2 else exp / 2
-        return (self if exp % 2 else 1) * (self * self)**even_exp
+        if exp >= 0 and isinstance(exp, int):
+            return (1 if exp == 0 else
+                    self if exp == 1 else
+                    self * (self * self)**((exp - 1) / 2) if exp % 2 else
+                    (self * self)**(exp / 2)
+        raise ValueError
     def __repr__(self):
         return f'{self.__class__.__name__}' + super().__repr__()
     def __sub__(self, other):
@@ -53,9 +51,8 @@ class Vector(tuple):
         return math.acos(abs(other.normalized() * self.normalized()))
 
 class Vector3(Vector):
-    def __new__(cls, *args):
-        assert len(args) == 3
-        return super().__new__(cls, *args)
+    def __new__(cls, /, a, b, c):
+        return super().__new__(cls, a, b, c)
     def cross(self, other):
         return Vector3(self[1] * other[2] - other[1] * self[2],
                 self[2] * other[0] - other[2] * self[0],
@@ -105,54 +102,9 @@ class DivRingElement(abc.ABC):
     def __truediv__(self, other):
         pass
 
-class QuaQua(abc.ABC):
+class Quaternion(DivRingElement):
     '''
-    "quasi-Quaternion", the interface of Quaternion.
-
-    In particular, Versor implements QuaQua and does not subclass Quaternion.
-
-    * Versor does not have a constructor __class__(scalar, vector).
-    * Versor does not extend DivRingElement, the superclass of Quaternion.
-    * No Versor is a "zero", an additive identity for instances of Versor.
-    * Versor does not have a class variable Versor.ZERO.
-    '''
-    @abc.abstractmethod
-    def __abs__(self):
-        pass
-    @abc.abstractmethod
-    def __add__(self, other):
-        pass
-    @abc.abstractmethod
-    def __bool__(self):
-        pass
-    @abc.abstractmethod
-    def __eq__(self, other):
-        pass
-    @abc.abstractmethod
-    def __hash__(self):
-        pass
-    @abc.abstractmethod
-    def __mul__(self, other):
-        pass
-    @abc.abstractmethod
-    def __neg__(self):
-        pass
-    @abc.abstractmethod
-    def __pos__(self):
-        pass
-    @abc.abstractmethod
-    def __sub__(self, other):
-        pass
-    @abc.abstractmethod
-    def __truediv__(self, other):
-        pass
-    @abc.abstractmethod
-    def conjugate(self):
-        pass
-
-class Quaternion(DivRingElement, QuaQua):
-    '''
-    Approximate an element of H, the incomputable set of all ("Hamilton's")
+    Approximate an element of H ("Hamilton's"), the incomputable set of all
     quaternions in mathematics.
     '''
     def __init__(self, scalar=0, vector=None):
@@ -163,14 +115,12 @@ class Quaternion(DivRingElement, QuaQua):
         >>> q1.vector
         Vector3(0.5909090909090909, 0.6818181818181819, 0.8636363636363636)
         '''
-        self.scalar = scalar
-        self.vector = Vector3(*vector) if vector else Vector3(0.0, 0.0, 0.0)
+        self.scalar, self.vector = scalar, Vector3(*vector) if vector else Vector3(0.0, 0.0, 0.0)
     def quaternion(self):
         return self
     def __abs__(self):
         'Returns the real distance from 0. Called for abs(self).'
         return math.sqrt(self.scalar**2 + self.vector**2)
-        # return math.hypot(self.scalar, *self.vector) # Python 3.9
     def __eq__(self, other):
         '''
         self == other
@@ -188,12 +138,9 @@ class Quaternion(DivRingElement, QuaQua):
         return hash((self.scalar, self.vector))
     def __mul__(self, other):
         'self * other'
-        if isinstance(other, QuaQua):
-            return Quaternion(
-                    scalar=self.scalar * other.scalar - self.vector * other.vector,
-                    vector=(
-                        other.vector * self.scalar +
-                        self.vector * other.scalar +
+        if isinstance(other, (Quaternion, Versor)):
+            return Quaternion(scalar=self.scalar * other.scalar - self.vector * other.vector,
+                    vector=(other.vector * self.scalar + self.vector * other.scalar +
                         self.vector.cross(other.vector)))
         if isinstance(other, numbers.Number):
             return Quaternion(scalar=self.scalar * other, vector=self.vector * other)
@@ -206,7 +153,7 @@ class Quaternion(DivRingElement, QuaQua):
         '''
         scalar, vector1, vector2, vector3 = (
                 round(x, 14) for x in [self.scalar] + list(self.vector))
-        return f'Quaternion({scalar}, {vector1}, {vector2}, {vector3})'
+        return f'{self.__class__.__name__}({scalar}, {vector1}, {vector2}, {vector3})'
     def __sub__(self, other):
         'self - other'
         return Quaternion(scalar=self.scalar - other.scalar,
@@ -217,11 +164,10 @@ class Quaternion(DivRingElement, QuaQua):
             return self * other.conjugate()
         if isinstance(other, Quaternion):
             square = other.scalar**2 + other.vector**2
-            return Quaternion(scalar=self.scalar / square,
-                    vector=self.vector / square) * other.conjugate()
+            return Quaternion(scalar=self.scalar / square, vector=self.vector / square
+                    ) * other.conjugate()
         if isinstance(other, numbers.Number):
-            return Quaternion(scalar=self.scalar / other,
-                    vector=self.vector / other)
+            return Quaternion(scalar=self.scalar / other, vector=self.vector / other)
         return NotImplemented
     def conjugate(self):
         'Quaternion(scalar=a, vector=v).conjugate() == Quaternion(scalar=a, vector=-v).'
@@ -248,35 +194,12 @@ Quaternion.__pos__.__doc__ = \
         True
         '''
 
-class Versor(MulGroup, QuaQua):
+class Versor(MulGroup):
     '''
     Approximate a subset V of H, where H is the incomputable set of all
     quaternions in mathematics and V = {q for q in H if abs(q) == 1}.
-
-    Having the invariant abs(q) == 1, the set V is closed under products,
-    quotients, and additive inverses, but not under addition. V does
-    not contain the zero quaternion, which is the zero element of
-    quaternion addition.
-
-    It is inevitable that some mathematical equalities for versors will
-    not be computational equalities for class Versor. No representation
-    for quaternions, or versors, or real numbers, can provide a
-    representation for every such object that is both exact and small
-    enough to use. We can only choose which such objects will have
-    exact, small-enough representations. Consequently, all operations
-    will have inputs for which the computed results are not the
-    mathematically exact results. The computed results will never
-    satisfy all of the properties of the mathematically exact results.
-
-    This class represents versors as 4-tuples of binary64 values. An
-    example of a versor that has no exact representation in that form
-    is (0, 4/21, 5/21, 20/21). In binary64 math, that versor does not
-    satisfy the invariant abs(q) == 1, if abs would be implemented as
-    the sum of squared components.
-
-    If abs would be implemented as math.hypot in Python 3.10, then
-    that versor actually does satisfy abs(q) == 1. But the inevitable
-    remains inevitable.
+    The set V is closed under products, quotients, and additive inverses,
+    but not addition.
     '''
 
     CLASS_VERSION='1.0.0'
@@ -291,7 +214,7 @@ class Versor(MulGroup, QuaQua):
         (1.0, Vector3(0.0, 0.0, 0.0))
         '''
         self.vector = Vector3(*vector) if vector and vector != 1 else Vector3(0.0, 0.0, 0.0)
-        self.scalar = (1.0 if positive else -1.0) * math.sqrt(1.0 - self.vector * self.vector)
+        self.scalar = (1.0 if positive else -1.0) * math.sqrt(1.0 - self.vector**2)
     def quaternion(self):
         return Quaternion(self.scalar, self.vector)
     def __abs__(self):
@@ -351,9 +274,7 @@ class Versor(MulGroup, QuaQua):
         ...     math.cos(math.pi/12)/math.sqrt(2))) ) < 1e-14
         '''
         if isinstance(other, Versor):
-            return Versor(vector=(
-                        other.vector * self.scalar +
-                        self.vector * other.scalar +
+            return Versor(vector=(other.vector * self.scalar + self.vector * other.scalar +
                         self.vector.cross(other.vector)))
         if isinstance(other, Quaternion):
             return self.quaternion() * other
@@ -374,16 +295,14 @@ class Versor(MulGroup, QuaQua):
     def __repr__(self):
         scalar, vector1, vector2, vector3 = (
                 round(x, 14) for x in [self.scalar] + list(self.vector))
-        return f'Versor({scalar}, {vector1}, {vector2}, {vector3})'
+        return f'{self.__class__.__name__}({scalar}, {vector1}, {vector2}, {vector3})'
     def __sub__(self, other):
         'self - other'
         # Is a versor if, and only if, one of the following is the case:
         # *) ``other`` equals zero;
-        # *) the perpendicular plane that bisects the line segment
+        # *) TODO the perpendicular plane that bisects the line segment
         #    (self, -other) contains the origin.
         return self.quaternion() - other
-        #return Quaternion(scalar=self.scalar - other.scalar,
-        #        vector=(self.vector[i] - other.vector[i] for i in range(3)))
     def __truediv__(self, other):
         '''
         self times multiplicative inverse of other
@@ -411,15 +330,7 @@ class Versor(MulGroup, QuaQua):
     def angle(self):
         '''
         Express axis-angle rotation as a versor:
-        Q =(cos θ/2, k sin θ/2)
-        where
-        * k is the axis, a unit;
-        * θ is the angle.
-
-        From Q=(s, x) a versor, obtain axis and angle:
-
-        θ = 2 atan2(|x|, s)
-
+        Q =(cos θ/2, k sin θ/2) where k is the axis, a unit; θ is the angle.
         k = 0 if (θ = 0) else x / sin θ/2
 
         >>> theta = math.pi/2
@@ -428,7 +339,6 @@ class Versor(MulGroup, QuaQua):
         True
         '''
         return 2 * math.atan2(math.sqrt(self.vector * self.vector), self.scalar)
-        # return 2 * math.atan2(math.hypot(*self.vector), self.scalar) # Python 3.9
     def axis(self):
         '''
         >>> print(tuple(round(x**2, 14) for x in Versor((.5, .5, .5)).axis()))
@@ -438,7 +348,7 @@ class Versor(MulGroup, QuaQua):
         return 0 if theta == 0 else self.vector / math.sin(theta/2)
     @classmethod
     def fromangleaxis(cls, angle, axis):
-        return Versor(axis * math.sin(angle/2))
+        return Versor(axis.normalized() * math.sin(angle/2))
     def apply(self, point):
         '''
         >>> p1 = Vector3(1, 1, 1)
@@ -482,6 +392,9 @@ class Versor(MulGroup, QuaQua):
                 ).vector * lendev + extent
     def rotate(self, point):
         return (self.conjugate() * Quaternion(0, point) * self).vector
+    def rotation(self):
+        i, j, k = Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)
+        return [self.rotate(i), self.rotate(j), self.rotate(k)]
 
 if __name__ == '__main__':
     doctest.testmod()
