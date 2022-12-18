@@ -1,65 +1,31 @@
 #!/usr/bin/env python3
+# Aaron Mansheim <minopret@gmail.com> 2022
 import abc
 import doctest
 from math import atan2, hypot, sin, sqrt
-import math
 import numbers
 import linear
 
 class Vector4(linear.Vector):
-    INDICES = (0, 1, 2, 3)
     __slots__ = ('x', 'y', 'z', 'w')
     # pylint: disable=invalid-name
-    def __init__(self, /, x, y, z, w):
-        self.z, self.w = z, w
-        super().__init__(x, y)
-    def __getitem__(self, key):
-        indices = self.__class__.INDICES
-        if isinstance(key, int):
-            return (self.x, self.y, self.z, self.w)[indices[key]]
-        if isinstance(key, slice):
-            return tuple((self.x, self.y, self.z, self.w)[index] for index in indices[key])
-        syntax_warning = TypeError(
-                f'Vector indices must be integers or slices, not {type(key).__name__}')
-        raise syntax_warning
+    def __init__(self, /, x=0.0, y=0.0, z=0.0, w=0.0):
+        self.x, self.y, self.z, self.w = x, y, z, w
+    @staticmethod
+    def indices():
+        return (0, 1, 2, 3)
     def __len__(self):
         return 4
+    def _getitem(self, key):
+        indices = self.__class__.indices()
+        return (self.x, self.y, self.z, self.w)[indices[key]]
 
-class DivRingInitializer:
-    def __init__(self, divring):
-        self.divring = divring
-    def __get__(self, instance, owner=None):
-        owner.ZERO = self.divring()
-        return owner.ZERO
-
-class DivRingElement(abc.ABC):
+class DivRingElement(linear.AddableElement):
     def __init_subclass__(cls, divring=None, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if divring is None:
-            divring = cls
-        cls.divring = divring
-        cls.ZERO = DivRingInitializer(divring)
+        super().__init_subclass__(addgroup=divring, **kwargs)
         cls.ONE = cls(1)
-    def __add__(self, other):
-        'self + other'
-        return self - (self.__class__.ZERO - other)
-    def __bool__(self):
-        'True if self != 0. Called for bool(self).'
-        return self != self.__class__.ZERO
-    @abc.abstractmethod
-    def __eq__(self, other):
-        pass
     @abc.abstractmethod
     def __mul__(self, other):
-        pass
-    def __neg__(self):
-        '-self'
-        return self.__class__.ZERO - self
-    def __pos__(self):
-        '+self'
-        return self
-    @abc.abstractmethod
-    def __sub__(self, other):
         pass
     @abc.abstractmethod
     def __truediv__(self, other):
@@ -78,7 +44,7 @@ class Quaternion(DivRingElement):
         >>> q1.vector
         Vector3(0.5909090909090909, 0.6818181818181818, 0.8636363636363636)
         '''
-        self.scalar, self.vector = scalar, linear.Vector3(*(vector or (0.0, 0.0, 0.0)))
+        self.scalar, self.vector = scalar, linear.Vector3(*(vector or tuple()))
     def __abs__(self):
         'Returns the real distance from 0. Called for abs(self).'
         return hypot(self.scalar, *self.vector)
@@ -88,7 +54,7 @@ class Quaternion(DivRingElement):
 
         >>> q1 = Quaternion(31/22.0, linear.Vector3(13/22.0, 15/22.0, 19/22.0))
         >>> q2 = Quaternion(31/22.0, linear.Vector3(13/22.0, 15/22.0, 19/22.0))
-        >>> q3 = Quaternion(vector=linear.Vector3(0, 0, 0))
+        >>> q3 = Quaternion(vector=linear.Vector3())
         >>> q1 == q2
         True
         >>> q1 == q3
@@ -136,9 +102,9 @@ class Quaternion(DivRingElement):
     def apply(self, point):
         extent = point.proj(self.vector)
         deviation = point - extent
-        lendev = deviation.norm()
-        return (self.conjugate() * Quaternion(0, deviation * (1 / lendev)) * self
-                ).vector * lendev + extent
+        absdev = abs(deviation)
+        return (self.conjugate() * Quaternion(0, deviation * (1 / absdev)) * self
+                ).vector * absdev + extent
     def rotate(self, point):
         return (self.conjugate() * Quaternion(0, point) * self).vector
     def rotation(self):
@@ -146,7 +112,7 @@ class Quaternion(DivRingElement):
         Compute vectors ri, rj, rk such that, for each vector (a, b, c),
         this quaternion rotates it to ``a ri + b rj + c rk``.
         '''
-        i, j, k = linear.Vector3(1, 0, 0), linear.Vector3(0, 1, 0), linear.Vector3(0, 0, 1)
+        i, j, k = linear.Vector3(a=1), linear.Vector3(b=1), linear.Vector3(c=1)
         return [self.rotate(i), self.rotate(j), self.rotate(k)]
 
 Quaternion.__neg__.__doc__ = \
@@ -191,10 +157,10 @@ class Versor(Quaternion, divring=Quaternion):
         '''
         if scalar is None:
             if vector == 1 or vector is None:
-                scalar, vector = 1.0, linear.Vector3(0.0, 0.0, 0.0)
+                scalar, vector = 1.0, linear.Vector3()
             else:
                 vector = linear.Vector3(*vector)
-                scalar = sqrt(1.0 - vector.norm()**2)
+                scalar = sqrt(1.0 - abs(vector)**2)
         scalar *= 1.0 if positive else -1.0
         scalar, *vector = Vector4(scalar, *vector).normalized()
         super().__init__(scalar, vector)
@@ -310,7 +276,7 @@ class Versor(Quaternion, divring=Quaternion):
         >>> assert isclose(theta,
         ...     Versor(vector=(cos(pi/4)*sin(theta/2), sin(pi/4)*sin(theta/2), 0)).angle())
         '''
-        return 2 * atan2(self.vector.norm(), self.scalar)
+        return 2 * atan2(abs(self.vector), self.scalar)
     def axis(self):
         '''
         >>> print(tuple(round(x**2, 14) for x in Versor(vector=(.5, .5, .5)).axis()))
@@ -332,19 +298,19 @@ Versor.apply.__doc__ = \
         >>> s1 = p1 - p1.proj(u1.vector)
         >>> s2 = p2 - p1.proj(u1.vector)
         >>> assert isclose(u1.vector.anglebetween(p1), u1.vector.anglebetween(p2))
-        >>> assert isclose(p1.norm(), p2.norm())
-        >>> assert isclose(u1.vector * s2, 1e-9, abs_tol=1e-9)
-        >>> assert isclose(u1.vector * s1, 1e-9, abs_tol=1e-9)
-        >>> assert isclose(s2 * p1, 1e-9, abs_tol=1e-9), f'{s2 * p1} >> 0'
-        >>> assert isclose(s2 * s1, 1e-9, abs_tol=1e-9), f'{s2 * s1} >> 0'
-        >>> assert isclose(p2 * s1, 1e-9, abs_tol=1e-9), f'{p2 * s1} >> 0'
+        >>> assert isclose(abs(p1), abs(p2))
+        >>> assert isclose(u1.vector * s2, 0, abs_tol=1e-9)
+        >>> assert isclose(u1.vector * s1, 0, abs_tol=1e-9)
+        >>> assert isclose(s2 * p1, 0, abs_tol=1e-9), f'{s2 * p1} >> 0'
+        >>> assert isclose(s2 * s1, 0, abs_tol=1e-9), f'{s2 * s1} >> 0'
+        >>> assert isclose(p2 * s1, 0, abs_tol=1e-9), f'{p2 * s1} >> 0'
         >>> u2 = Versor.fromangleaxis(pi / 3, r.normalized())
         >>> p3 = u2.apply(p1)
         >>> s3 = p3 - p1.proj(u2.vector)
         >>> assert isclose(u2.vector.anglebetween(p1), u2.vector.anglebetween(p3)
         ...     ), f'{u2.vector.anglebetween(p1)} <> {u2.vector.anglebetween(p3)}'
         >>> assert isclose(s1.anglebetween(s3), pi / 3), f'{s1.anglebetween(s3)} <> {pi / 3}'
-        >>> assert isclose(p1.norm(), p3.norm()), f'{p1.norm()} <> {p3.norm()}'
+        >>> assert isclose(abs(p1), abs(p3)), f'{abs(p1)} <> {abs(p3)}'
         >>> assert isclose(u2.vector * s3, 1e-9, abs_tol=1e-9), f'{u2.vector * s3} <> 0'
         >>> assert isclose(u2.vector * s1, 1e-9, abs_tol=1e-9), f'{u2.vector * s1} >> 0'
         '''
