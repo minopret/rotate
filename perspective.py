@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import doctest
-import prism
+import frustum
 
 def line_meets_plane(online1, online2, inplane, normal):
     numerator = normal * (inplane - online1)
@@ -11,7 +11,7 @@ def line_meets_plane(online1, online2, inplane, normal):
         return online1 if numerator == 0 else None
     return online1 + (online2 - online1) * numerator / denominator
 
-class FlattenedPrism(prism.Prism):
+class FlattenedFrustum(frustum.Frustum):
     def __init__(self, *args, pose=None, **kwargs):
         if pose is None:
             pose = tuple()
@@ -20,22 +20,22 @@ class FlattenedPrism(prism.Prism):
     def vertices(self) -> tuple:
         return self.fixed
 
-class Camera(prism.Prism):
-    def view(self, prism2):
+class Camera(frustum.Frustum):
+    def view(self, frustum2):
         r"""
         >>> import linear
         >>> import math
         >>> import quaternion
-        >>> base = prism.ConvexPolygon([
-        ...         prism.Point(-0.5, -0.5), prism.Point( 0.5, -0.5),
-        ...         prism.Point( 0.5,  0.5), prism.Point(-0.5,  0.5)])
+        >>> base = frustum.ConvexPolygon([
+        ...         frustum.Point(-0.5, -0.5), frustum.Point( 0.5, -0.5),
+        ...         frustum.Point( 0.5,  0.5), frustum.Point(-0.5,  0.5)])
         >>> conformal = quaternion.Quaternion(0.0, linear.Vector3(a=1/math.sqrt(2.0)))
         >>> shear = linear.Vector3(0, 0, 1.0)
         >>> camera = Camera(base, conformal,linear.Vector3(), shear)
-        >>> prism2 = prism.Prism(base, conformal, linear.Vector3(c=-5), shear)
-        >>> camera.view(prism2).vertices()
+        >>> frustum2 = frustum.Frustum(base, conformal, linear.Vector3(c=-5), shear)
+        >>> camera.view(frustum2).vertices()
         ([Vector3(-0.14285714285714285, 0.14285714285714285, 0.0), Vector3(0.14285714285714285, 0.14285714285714285, 0.0), Vector3(0.14285714285714285, -0.14285714285714285, 0.0), Vector3(-0.14285714285714285, -0.14285714285714285, 0.0)], [Vector3(-0.0833333333333333, 0.0833333333333333, 0.0), Vector3(0.0833333333333333, 0.0833333333333333, 0.0), Vector3(0.0833333333333333, -0.0833333333333333, 0.0), Vector3(-0.0833333333333333, -0.0833333333333333, 0.0)])
-        >>> print(camera.view(prism2).ply())
+        >>> print(camera.view(frustum2).ply())
         ply
         format ascii 1.0
         element vertex 8
@@ -74,11 +74,11 @@ class Camera(prism.Prism):
         inplane = self.vertices()[0][0]
         normal = self.conformal.rotation()[2]
         project = projection(eye, inplane, normal)
-        pose = prism2.vertices()
+        pose = frustum2.vertices()
         pose = ([project(point) for point in pose[0]],
                 [project(point) for point in pose[1]])
-        return FlattenedPrism(prism2.polygon, prism2.conformal,
-                prism2.start, prism2.shear, pose=pose)
+        return FlattenedFrustum(frustum2.polygon, frustum2.conformal,
+                frustum2.start, frustum2.shear, pose=pose)
 
 if __name__ == '__main__':
     doctest.testmod()

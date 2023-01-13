@@ -83,7 +83,7 @@ class ConvexPolygon:
             return polygon
         return default
 
-class Prism:
+class Frustum:
     '''
     Define the boundary of a solid by a shell interpolated linearly
     between a starting path that lies in some plane and an ending path
@@ -148,10 +148,10 @@ class Prism:
         ((0, 0   ), (0, -1  ), (1, -1  ), (1, 0   )), then defining ``conformal`` as
         a half-turn on the x-axis.
 
-        >>> prism = Prism(ConvexPolygon([Point(0, 0), Point(0, -1), Point(1, -1), Point(1, 0)]),
+        >>> frustum = Frustum(ConvexPolygon([Point(0, 0), Point(0, -1), Point(1, -1), Point(1, 0)]),
         ...         quaternion.Quaternion(0.0, linear.Vector3(1/math.sqrt(2.0), 0.0, 0.0)),
         ...         linear.Vector3(), linear.Vector3(0.25, 0.25, 1.0))
-        >>> print(prism.apex())
+        >>> print(frustum.apex())
         Vector3(0.4999999999999999, 0.4999999999999999, 1.9999999999999996)
         '''
 
@@ -163,12 +163,12 @@ class Prism:
         return vertex1 + dir1 * vertex1.line_approaches_line(dir1, vertex2, dir2)
     def vertices(self) -> tuple:
         r'''
-        >>> prism = Prism(ConvexPolygon(OCTAGON),
+        >>> frustum = Frustum(ConvexPolygon(OCTAGON),
         ...         quaternion.Quaternion(2, linear.Vector3(1.0, 1.0, 1.0)),
         ...         linear.Vector3(2.0,  3.0, 5.0),
         ...         linear.Vector3(4.0, -4.0, 4.0))
         >>> print(";\n".join([",\n".join([str(vertex) for vertex in path])
-        ... for path in prism.vertices()]))
+        ... for path in frustum.vertices()]))
         Vector3(5.0, 1.0, 11.0),
         Vector3(8.428571428571427, 3.7142857142857144, 7.857142857142856),
         Vector3(7.999999999999999, 6.0, 3.0),
@@ -203,11 +203,11 @@ class Prism:
 
     def triangulation(self):
         r'''
-        >>> prism = Prism(ConvexPolygon(QUADRILATERAL),
+        >>> frustum = Frustum(ConvexPolygon(QUADRILATERAL),
         ...         quaternion.Quaternion(2, linear.Vector3(1.0, 1.0, 1.0)),
         ...         linear.Vector3(2.0,  3.0, 5.0),
         ...         linear.Vector3(4.0, -4.0, 4.0))
-        >>> print("\n".join(str(point) for point in prism.triangulation()))
+        >>> print("\n".join(str(point) for point in frustum.triangulation()))
         Vector3(-1.0, 5.0, -0.9999999999999991)
         Vector3(-3.999999999999999, 0.0, 7.0)
         Vector3(5.0, 1.0, 11.0)
@@ -278,11 +278,11 @@ class Prism:
 
     def ply(self):
         """
-        >>> prism = Prism(ConvexPolygon(OCTAGON),
+        >>> frustum = Frustum(ConvexPolygon(OCTAGON),
         ...         quaternion.Quaternion(0.8, linear.Vector3(0.7, 0.7, 0.7)),
         ...         linear.Vector3(6.0, -3.0, -7.0),
         ...         linear.Vector3(b=-18.0))
-        >>> print(prism.ply())
+        >>> print(frustum.ply())
         ply
         format ascii 1.0
         element vertex 16
